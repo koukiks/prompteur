@@ -17,7 +17,8 @@ import {
   Monitor,
   ChevronUp,
   ChevronDown,
-  X,
+  Maximize,
+  Minimize,
   FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -70,11 +71,35 @@ export default function App() {
   const [scrollPos, setScrollPos] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+
+  // Fullscreen listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.error("Erreur lors du passage en plein écran:", err);
+    }
+  };
 
   // Persist data
   useEffect(() => {
@@ -161,6 +186,15 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={toggleFullscreen}
+                className="text-white/60 hover:text-white"
+                title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+              >
+                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+              </Button>
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -379,17 +413,29 @@ function SettingsDrawer({
           {/* Color Presets */}
           <div className="space-y-4">
             <Label className="text-sm font-medium text-white/60 uppercase tracking-wider">Couleur du texte</Label>
-            <div className="flex gap-3">
-              {['#ffffff', '#00ff00', '#ffff00', '#00ffff', '#ff00ff'].map(color => (
+            <div className="flex flex-wrap gap-3">
+              {[
+                { name: 'Blanc', value: '#ffffff' },
+                { name: 'Néon Vert', value: '#39FF14' },
+                { name: 'Jaune', value: '#ffff00' },
+                { name: 'Cyan', value: '#00ffff' },
+                { name: 'Ambre', value: '#FFB000' },
+                { name: 'Rose', value: '#ff00ff' }
+              ].map(color => (
                 <button
-                  key={color}
-                  onClick={() => setSettings(s => ({ ...s, textColor: color }))}
+                  key={color.value}
+                  onClick={() => setSettings(s => ({ ...s, textColor: color.value }))}
                   className={cn(
-                    "w-10 h-10 rounded-full border-2 transition-all",
-                    settings.textColor === color ? "border-blue-500 scale-110" : "border-transparent"
+                    "w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center",
+                    settings.textColor === color.value ? "border-blue-500 scale-110" : "border-transparent"
                   )}
-                  style={{ backgroundColor: color }}
-                />
+                  style={{ backgroundColor: color.value }}
+                  title={color.name}
+                >
+                  {settings.textColor === color.value && (
+                    <div className="w-2 h-2 rounded-full bg-black/50" />
+                  )}
+                </button>
               ))}
             </div>
           </div>
