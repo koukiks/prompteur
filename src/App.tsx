@@ -19,7 +19,10 @@ import {
   ChevronDown,
   Maximize,
   Minimize,
-  FileText
+  FileText,
+  FlipHorizontal,
+  Plus,
+  Minus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
@@ -47,12 +50,12 @@ interface PrompterSettings {
 
 const DEFAULT_SETTINGS: PrompterSettings = {
   fontSize: 48,
-  speed: 3,
+  speed: 5,
   isMirror: false,
   alignment: 'center',
   showIndicator: true,
   lineHeight: 1.5,
-  textColor: '#39FF14',
+  textColor: '#ffffff',
 };
 
 // --- Main App Component ---
@@ -77,6 +80,10 @@ export default function App() {
   const contentRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+
+  const isDragging = useRef(false);
+  const startYRef = useRef(0);
+  const startScrollPosRef = useRef(0);
 
   // Fullscreen listener
   useEffect(() => {
@@ -112,11 +119,13 @@ export default function App() {
 
   // Scroll Logic
   const animate = useCallback((time: number) => {
-    if (lastTimeRef.current !== null) {
+    if (lastTimeRef.current !== null && !isDragging.current) {
       const deltaTime = time - lastTimeRef.current;
+      // Prevent massive jumps (e.g. max 50ms delta)
+      const cappedDelta = Math.min(deltaTime, 50);
       // Speed factor: 1 speed unit = ~20 pixels per second
       const speedFactor = settings.speed * 15; 
-      const increment = (speedFactor * deltaTime) / 1000;
+      const increment = (speedFactor * cappedDelta) / 1000;
       
       setScrollPos(prev => prev + increment);
     }
@@ -144,20 +153,39 @@ export default function App() {
 
   // Toggle play/pause
   const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-    if (!isPlaying) {
-      setShowControls(false); // Hide controls when starting
+    const nextPlaying = !isPlaying;
+    setIsPlaying(nextPlaying);
+    setShowControls(!nextPlaying);
+  };
+
+  // Handle drag to scroll
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    isDragging.current = true;
+    startYRef.current = e.clientY;
+    startScrollPosRef.current = scrollPos;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current) return;
+    const deltaY = e.clientY - startYRef.current;
+    setScrollPos(Math.max(0, startScrollPosRef.current - deltaY));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    
+    const dragDistance = Math.abs(e.clientY - startYRef.current);
+    if (dragDistance < 10) {
+      togglePlay();
     }
   };
 
-  // Handle tap to play/pause
-  const handleContainerClick = (e: React.MouseEvent) => {
-    // Don't toggle if clicking on UI elements
-    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('[role="dialog"]')) return;
-    
-    if (!isEditing) {
-      togglePlay();
-    }
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    setScrollPos(prev => Math.max(0, prev + e.deltaY));
   };
 
   // Handle double tap to reset
@@ -168,15 +196,16 @@ export default function App() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black text-white font-sans selection:bg-blue-500/30 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-[#0a0a0a] text-white font-sans selection:bg-blue-500/30 overflow-hidden">
       {/* --- Header / Navigation --- */}
       <AnimatePresence>
         {(showControls || isEditing) && (
           <motion.header 
-            initial={{ y: -100 }}
+            initial={{ y: "-100%" }}
             animate={{ y: 0 }}
-            exit={{ y: -100 }}
-            className="z-50 flex items-center justify-between px-6 py-4 bg-black/80 backdrop-blur-md border-bottom border-white/10"
+            exit={{ y: "-100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-[#333333]"
           >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -211,12 +240,10 @@ export default function App() {
 
       {/* --- Main Content Area --- */}
       <main 
-        className="flex-1 relative overflow-hidden cursor-pointer"
-        onClick={handleContainerClick}
-        onDoubleClick={handleDoubleTap}
+        className="absolute inset-0 overflow-hidden"
       >
         {isEditing ? (
-          <div className="absolute inset-0 p-6 pt-20">
+          <div className="absolute inset-0 p-6 pt-24 pb-24">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -228,9 +255,15 @@ export default function App() {
           <div 
             ref={containerRef}
             className={cn(
-              "absolute inset-0 flex flex-col items-center",
+              "absolute inset-0 flex flex-col items-center touch-none select-none cursor-pointer",
               settings.isMirror && "scale-x-[-1]"
             )}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onWheel={handleWheel}
+            onDoubleClick={handleDoubleTap}
           >
             {/* Reading Indicator */}
             {settings.showIndicator && (
@@ -254,7 +287,7 @@ export default function App() {
                 maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
                 WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
               }}
-              className="w-full max-w-4xl px-8 font-bold transition-transform duration-75 ease-linear"
+              className="w-full max-w-[95%] px-4 md:px-8 font-bold transition-transform duration-75 ease-linear"
             >
               {text.split('\n').map((line, i) => (
                 <p key={i} className="mb-[0.5em]">
@@ -269,16 +302,75 @@ export default function App() {
         <AnimatePresence>
           {!isEditing && (
             <motion.div 
-              initial={{ y: 100 }}
-              animate={{ y: showControls ? 0 : 80 }}
-              className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black via-black/90 to-transparent pt-20 pb-8 px-6 flex flex-col items-center gap-6"
+              initial={{ y: "100%" }}
+              animate={{ y: showControls ? 0 : "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent pt-32 pb-8 px-4 flex flex-col items-center gap-6"
             >
+              {/* Quick Controls Pill */}
+              <div className="w-full max-w-sm flex items-center bg-[#1a1a1a]/90 backdrop-blur-xl border border-[#333333] rounded-full p-1.5 shadow-2xl">
+                {/* Size Controls */}
+                <div className="flex items-center">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-9 w-9 rounded-full hover:bg-white/10 text-white/70" 
+                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.max(16, s.fontSize - 4) }))}
+                  >
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  <Type className="w-4 h-4 text-white/30 mx-0.5" />
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-9 w-9 rounded-full hover:bg-white/10 text-white/70" 
+                    onClick={() => setSettings(s => ({ ...s, fontSize: Math.min(120, s.fontSize + 4) }))}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                
+                <div className="w-px h-6 bg-[#333333] mx-2" />
+                
+                {/* Speed Slider */}
+                <div className="flex-1 flex items-center gap-3 pr-4">
+                  <Slider 
+                    value={[settings.speed]} 
+                    min={1} 
+                    max={10} 
+                    step={0.5}
+                    onValueChange={(val) => {
+                      const v = Array.isArray(val) ? val[0] : val;
+                      setSettings(s => ({ ...s, speed: v }));
+                    }}
+                    className="flex-1 cursor-grab active:cursor-grabbing"
+                  />
+                  <span className="text-[11px] text-white/50 font-mono w-6 text-right font-medium">
+                    {settings.speed}x
+                  </span>
+                </div>
+              </div>
+
               <div className="flex items-center gap-4">
                 <Button 
                   variant="outline" 
                   size="icon" 
-                  className="rounded-full w-12 h-12 bg-white/5 border-white/10 hover:bg-white/10"
+                  className={cn(
+                    "rounded-full w-12 h-12 transition-all border-[#333333]",
+                    settings.isMirror ? "bg-blue-600/20 text-blue-400 border-blue-500/50 hover:bg-blue-600/30" : "bg-[#1a1a1a] hover:bg-[#2a2a2a]"
+                  )}
+                  onClick={() => setSettings(s => ({ ...s, isMirror: !s.isMirror }))}
+                  title={settings.isMirror ? "Désactiver le miroir" : "Activer le miroir"}
+                >
+                  <FlipHorizontal className="w-5 h-5" />
+                </Button>
+
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="rounded-full w-12 h-12 bg-[#1a1a1a] border-[#333333] hover:bg-[#2a2a2a]"
                   onClick={handleReset}
+                  title="Réinitialiser"
                 >
                   <RotateCcw className="w-5 h-5" />
                 </Button>
@@ -293,13 +385,6 @@ export default function App() {
 
                 <SettingsDrawer settings={settings} setSettings={setSettings} />
               </div>
-
-              <button 
-                onClick={() => setShowControls(!showControls)}
-                className="text-white/40 hover:text-white/60 transition-colors"
-              >
-                {showControls ? <ChevronDown className="w-6 h-6" /> : <ChevronUp className="w-6 h-6" />}
-              </button>
             </motion.div>
           )}
         </AnimatePresence>
