@@ -277,7 +277,7 @@ export default function App() {
             <div 
               ref={contentRef}
               style={{ 
-                transform: `translateY(${-scrollPos}px)`,
+                transform: `translate3d(0, ${-scrollPos}px, 0)`,
                 fontSize: `${settings.fontSize}px`,
                 lineHeight: settings.lineHeight,
                 textAlign: settings.alignment,
@@ -286,8 +286,11 @@ export default function App() {
                 paddingBottom: '100vh',
                 maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
                 WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
+                willChange: 'transform',
+                WebkitBackfaceVisibility: 'hidden',
+                backfaceVisibility: 'hidden',
               }}
-              className="w-full max-w-[95%] px-4 md:px-8 font-bold transition-transform duration-75 ease-linear"
+              className="w-full max-w-[95%] px-4 md:px-8 font-bold"
             >
               {text.split('\n').map((line, i) => (
                 <p key={i} className="mb-[0.5em]">
